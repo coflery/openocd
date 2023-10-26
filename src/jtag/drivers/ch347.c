@@ -194,7 +194,7 @@ static uint32_t CH347OpenDevice(uint64_t iIndex)
 	uint16_t vids[] = {ch347_vid, 0};
 	uint16_t pids[] = {ch347_pid, 0};
 
-	if (jtag_libusb_open(vids, pids, &ch347_handle, NULL))
+	if (jtag_libusb_open(vids, pids, NULL, &ch347_handle, NULL))
 	{
 		LOG_ERROR("ch347 not found: vid=%04x, pid=%04x",
 				  ch347_vid, ch347_pid);

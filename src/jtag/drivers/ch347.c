@@ -27,7 +27,7 @@
  *                                                                         *
  *            _____________                                                *
  *           |             |____JTAG(TDO,TDI,TMS,TCK,TRST)                 *
- *      USB__|    CH347T   |                                               *
+ *      USB__|   CH347T/F  |                                               *
  *           |_____________|____SWD(SWCLK/TCK,SWDIO/TMS)                   *
  *           |             |                                               *
  *           |_____________|____UART(TXD1,RXD1,RTS1,CTS1,DTR1)             *
@@ -55,7 +55,6 @@
 #endif
 
 /* project specific includes */
-#include <jtag/adapter.h>
 #include <jtag/interface.h>
 #include <jtag/commands.h>
 #include <jtag/swd.h>
@@ -196,14 +195,14 @@ static uint32_t CH347OpenDevice(uint64_t iIndex)
 
 	if (jtag_libusb_open(vids, pids, NULL, &ch347_handle, NULL))
 	{
-		LOG_ERROR("ch347 not found: vid=%04x, pid=%04x",
+		LOG_ERROR("CH347 not found: vid=%04x, pid=%04x",
 				  ch347_vid, ch347_pid);
 		return false;
 	}
 
 	if (libusb_claim_interface(ch347_handle, CH347_MPHSI_INTERFACE))
 	{
-		LOG_ERROR("ch347 unable to claim interface");
+		LOG_ERROR("CH347 unable to claim interface");
 		return false;
 	}
 
@@ -212,7 +211,7 @@ static uint32_t CH347OpenDevice(uint64_t iIndex)
 				LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
 				VENDOR_VERSION, 0, 0, &ver, sizeof(ver), usb_write_timeout, NULL) != ERROR_OK)
 	{
-		LOG_ERROR("ch347 unable to get firmware version");
+		LOG_ERROR("CH347 unable to get firmware version");
 		return false;
 	}
 	LOG_INFO("CH347 found (Firmware=0x%02X)", ver);
@@ -402,7 +401,7 @@ static void CH347_Read_Scan(UCHAR *pBuffer, uint32_t length)
 	read_buf_index = 0;
 	read_buf = calloc(sizeof(unsigned char), read_size);
 	if (!CH347_Read(read_buf, &RxLen)) {
-		LOG_ERROR("CH347 read fail");
+		LOG_ERROR("CH347 read data fail");
 		return;
 	}
 	while (index < read_size) { /* deal with the CH347_CMD_JTAG_BIT_OP_RD  or  CH347_CMD_JTAG_DATA_SHIFT_RD */
@@ -425,7 +424,7 @@ static void CH347_Read_Scan(UCHAR *pBuffer, uint32_t length)
 			read_buf_index += 1;
 			index += dataLen + 1;
 		} else {
-			LOG_ERROR("CH347 read command fail");
+			LOG_ERROR("CH347 read buffer fail");
 			*(pBuffer + read_buf_index) = read_buf[index];
 			read_buf_index++;
 			index++;
@@ -492,12 +491,12 @@ static void combinePackets(uint8_t cmd, int cur_idx, unsigned long int len)
 		ch347.buffer[cur_idx + 2] =
 			(uint8_t)(((len - CH347_CMD_HEADER) >> 8) & 0xFF);
 
-		/* update the ch347 struct */
+		/* update the CH347 struct */
 		ch347.lastCmd = cmd;
 		ch347.len_idx = cur_idx + 1;
 		ch347.len_value = (len - CH347_CMD_HEADER);
 	} else {
-		/* update the ch347 struct cmd data leng */
+		/* update the CH347 struct cmd data leng */
 		ch347.len_value += (len - CH347_CMD_HEADER);
 
 		/* update the cmd packet valid leng */
@@ -511,7 +510,7 @@ static void combinePackets(uint8_t cmd, int cur_idx, unsigned long int len)
 			   &ch347.buffer[cur_idx + CH347_CMD_HEADER],
 			   (len - CH347_CMD_HEADER));
 
-		/* update the ch347 buffer index */
+		/* update the CH347 buffer index */
 		ch347.buffer_idx -= CH347_CMD_HEADER;
 	}
 }
@@ -617,7 +616,6 @@ static void CH347_TMS(struct tms_command *cmd)
 static int ch347_reset(int trst, int srst)
 {
 	LOG_DEBUG_IO("reset trst: %i srst %i", trst, srst);
-#if 1
 	unsigned char BitBang[512] = "", BII, i;
 	uint32_t TxLen;
 
@@ -642,33 +640,6 @@ static int ch347_reset(int trst, int srst)
 		LOG_ERROR("CH347 send reset command fail");
 		return false;
 	}
-#else
-	if (!swd_mode && trst == 0) {
-
-		unsigned long int BI = 0;
-
-		CH347_In_Buffer(CH347_CMD_JTAG_BIT_OP);
-		CH347_In_Buffer(0x01);
-		CH347_In_Buffer(0);
-
-		ch347.TRST = 0;
-		CH347_IdleClock(BI);
-
-		CH347_Flush_Buffer();
-
-		Sleep(50);
-
-		CH347_In_Buffer(CH347_CMD_JTAG_BIT_OP);
-		CH347_In_Buffer(0x01);
-		CH347_In_Buffer(0);
-
-		ch347.TRST = 1;
-		CH347_IdleClock(BI);
-
-		CH347_Flush_Buffer();
-		return ERROR_OK;
-	}
-#endif
 	return ERROR_OK;
 }
 
@@ -777,7 +748,7 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 		/* packet data don't deal D3 & D4 */
 		if ((CH347_CMD_JTAG_DATA_SHIFT_RD != ch347.lastCmd) |
 			(CH347_CMD_JTAG_DATA_SHIFT != ch347.lastCmd)) {
-			/* update the ch347 struct */
+			/* update the CH347 struct */
 			ch347.lastCmd = 0;
 			ch347.len_idx = 0;
 			ch347.len_value = 0;
@@ -815,7 +786,7 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 			ch347.len_idx = ch347.buffer_idx - 2;
 			ch347.len_value = DLen;
 		} else {
-			/* update the ch347 struct cmd data leng */
+			/* update the CH347 struct cmd data leng */
 			ch347.len_value += DLen;
 			/* update the cmd packet valid leng */
 			ch347.buffer[ch347.len_idx] =
@@ -1054,10 +1025,10 @@ static int ch347_init(void)
 	}
 
 	if (!swd_mode) {
-		/* ch347 init */
-		ch347.TCK = 0;
-		ch347.TMS = 0;
-		ch347.TDI = 0;
+		/* CH347 init */
+		ch347.TCK = TCK_L;
+		ch347.TMS = TMS_H;
+		ch347.TDI = TDI_L;
 		ch347.TRST = TRST_H;
 		ch347.buffer_idx = 0;
 
@@ -1164,7 +1135,7 @@ static int ch347_speed(int speed)
 	};
 
 	if (!swd_mode) {
-		for (i = 0; i < (sizeof(speed_clock) / sizeof(int)); i++) {
+		for (i = 0; i < ARRAY_SIZE(speed_clock); i++) {
 			if ((speed >= speed_clock[i]) &&
 				(speed <= speed_clock[i + 1])) {
 				clockRate = i + 1;

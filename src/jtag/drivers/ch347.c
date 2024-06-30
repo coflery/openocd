@@ -97,10 +97,10 @@
 #define USBC_PACKET_USBHS				512   /* Maximum data length in packet */
 #define USBC_PACKET_USBHS_SINGLE		510   /* Maximum package length */
 #define CH347_CMD_HEADER				3     /* Protocol header length */
+#define CH347_CMD_INFO_RD			 	0xCA  /* Parameter acquisition(fw version,JTAG parameters) */
 
 /* JTAG */
-#define CH347_CMD_INFO_RD			 0xCA
-#define CH347_CMD_JTAG_INIT			 0xD0 /* JTAG init command */
+#define CH347_CMD_JTAG_INIT			 0xD0 /* JTAG init */
 #define CH347_CMD_JTAG_BIT_OP		 0xD1 /* JTAG pin bit control */
 #define CH347_CMD_JTAG_BIT_OP_RD	 0xD2 /* JTAG pin bit control and read */
 #define CH347_CMD_JTAG_DATA_SHIFT	 0xD3 /* JTAG data shift */
@@ -170,7 +170,7 @@ typedef struct _CH347_SWD_CONTEXT {
 	uint8_t *ch347_cmd_buf;
 } CH347_SWD_CONTEXT;
 static CH347_SWD_CONTEXT ch347_swd_context;
-static bool swd_mode;
+static bool swd_mode = false;
 #pragma pack()
 
 #include <jtag/drivers/libusb_helper.h>
@@ -185,18 +185,24 @@ struct libusb_device_handle *ch347_handle;
 
 uint32_t usb_write_timeout = 500;
 uint32_t usb_read_timeout = 500;
-static uint16_t ch347_vid = 0x1a86; /* WCH */
-static uint16_t ch347_pid = 0x55dd; /* CH347 */
+static const uint16_t ch347_vids[] = {0x1a86, 0x1a86, 0x1a86};
+static const uint16_t ch347_pids[] = {0x55dd, 0x55de, 0x55e7};
+static uint16_t user_vid[] = {0x0000};
+static uint16_t user_pid[] = {0x0000};
 
 static uint32_t CH347OpenDevice(uint64_t iIndex)
 {
-	uint16_t vids[] = {ch347_vid, 0};
-	uint16_t pids[] = {ch347_pid, 0};
-
-	if (jtag_libusb_open(vids, pids, NULL, &ch347_handle, NULL))
+	if (jtag_libusb_open(user_vid, user_pid, NULL, &ch347_handle, NULL) &&
+		jtag_libusb_open(ch347_vids, ch347_pids, NULL, &ch347_handle, NULL))
 	{
-		LOG_ERROR("CH347 not found: vid=%04x, pid=%04x",
-				  ch347_vid, ch347_pid);
+		if (user_vid[0] && user_vid[0])
+		{
+			LOG_ERROR("CH347 not found: vid=%04x, pid=%04x", user_vid[0], user_pid[0]);
+		}
+		for (unsigned long i = 0; i < ARRAY_SIZE(ch347_vids); i++)
+		{
+			LOG_ERROR("CH347 not found: vid=%04x, pid=%04x", ch347_vids[i], ch347_pids[i]);
+		}
 		return false;
 	}
 
@@ -416,7 +422,7 @@ static void CH347_Read_Scan(UCHAR *pBuffer, uint32_t length)
 			dataLen += (read_buf[++index] & 0xFF) << 8;
 
 			for (i = 0; i < dataLen; i++) {
-				if (read_buf[index + 1 + i] & 1)
+				if (read_buf[index + 1 + i] == 0x01)
 					*(pBuffer + read_buf_index) |= (1 << i);
 				else
 					*(pBuffer + read_buf_index) &= ~(1 << i);
@@ -619,26 +625,28 @@ static int ch347_reset(int trst, int srst)
 	unsigned char BitBang[512] = "", BII, i;
 	uint32_t TxLen;
 
-	BII = CH347_CMD_HEADER;
-	for (i = 0; i < 7; i++) {
+	if (!swd_mode) {
+		BII = CH347_CMD_HEADER;
+		for (i = 0; i < 7; i++) {
+			BitBang[BII++] = TMS_H | TDI_L | TCK_L;
+			BitBang[BII++] = TMS_H | TDI_L | TCK_H;
+		}
 		BitBang[BII++] = TMS_H | TDI_L | TCK_L;
-		BitBang[BII++] = TMS_H | TDI_L | TCK_H;
-	}
-	BitBang[BII++] = TMS_H | TDI_L | TCK_L;
 
-	ch347.TCK = TCK_L;
-	ch347.TDI = TDI_L;
-	ch347.TMS = 0;
+		ch347.TCK = TCK_L;
+		ch347.TDI = TDI_L;
+		ch347.TMS = 0;
 
-	BitBang[0] = CH347_CMD_JTAG_BIT_OP;
-	BitBang[1] = BII - CH347_CMD_HEADER;
-	BitBang[2] = 0;
+		BitBang[0] = CH347_CMD_JTAG_BIT_OP;
+		BitBang[1] = BII - CH347_CMD_HEADER;
+		BitBang[2] = 0;
 
-	TxLen = BII;
+		TxLen = BII;
 
-	if (!CH347_Write(BitBang, &TxLen) && (TxLen != BII)) {
-		LOG_ERROR("CH347 send reset command fail");
-		return false;
+		if (!CH347_Write(BitBang, &TxLen) && (TxLen != BII)) {
+			LOG_ERROR("CH347 send reset command fail");
+			return false;
+		}
 	}
 	return ERROR_OK;
 }
@@ -822,7 +830,7 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 		readLen += tempLength;
 		DI = BI = 0;
 	}
-	int offset = 0;
+	int offset = 0, bit_count = 0;
 	if (IsRead && totalReadLength > 0) {
 		if (ch347.pack_size == STANDARD_PACK && bits && cmd) {
 			CH347_Flush_Buffer();
@@ -836,9 +844,10 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 			LOG_DEBUG("fields[%i].in_value[%i], offset: %d",
 				  i, cmd->fields[i].num_bits, offset);
 			num_bits = cmd->fields[i].num_bits;
+			if (ch347.pack_size == LARGER_PACK)
+				bit_count += num_bits;
 			if (cmd->fields[i].in_value) {
 				if (ch347.pack_size == LARGER_PACK) {
-					if (cmd->fields[i].in_value)
 						bit_copy_queued(
 							&ch347.read_queue,
 							cmd->fields[i].in_value,
@@ -848,10 +857,11 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 
 					if (num_bits > 7)
 						ch347.read_idx +=
-							DIV_ROUND_UP(offset, 8);
+							DIV_ROUND_UP(bit_count, 8);
 				} else {
+					num_bits = cmd->fields[i].num_bits;
 					uint8_t *captured = buf_set_buf(
-						readData, offset,
+						readData, bit_count,
 						malloc(DIV_ROUND_UP(num_bits, 8)),
 						0,
 						num_bits);
@@ -866,14 +876,20 @@ static void CH347_WriteRead(struct scan_command *cmd, uint8_t *bits,
 								: num_bits);
 						free(char_buf);
 					}
-					if (cmd->fields[i].in_value)
 						buf_cpy(captured,
 							cmd->fields[i].in_value,
 							num_bits);
 					free(captured);
 				}
+			} else {
+				LOG_DEBUG_IO("cmd->fields with no data");
 			}
-			offset += num_bits;
+			if (ch347.pack_size == LARGER_PACK)
+			{
+				offset += num_bits;
+			} else {
+				bit_count += cmd->fields[i].num_bits;
+			}
 		}
 	}
 
@@ -1019,7 +1035,7 @@ static int ch347_init(void)
 {
 	DevIsOpened = CH347OpenDevice(ugIndex);
 	ugIndex = DevIsOpened;
-	if (DevIsOpened < 0) {
+	if (!DevIsOpened) {
 		LOG_ERROR("CH347 open error");
 		return ERROR_FAIL;
 	}
@@ -1204,8 +1220,8 @@ COMMAND_HANDLER(ch347_handle_vid_pid_command)
 		CMD_ARGC = 2;
 	}
 	if (CMD_ARGC == 2) {
-		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[0], ch347_vid);
-		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[1], ch347_pid);
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[0], user_vid[0]);
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[1], user_pid[0]);
 	} else
 		LOG_WARNING("incomplete ch347_vid_pid configuration");
 

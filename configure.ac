@@ -143,6 +143,7 @@ m4_define([USB1_ADAPTERS],
 	[[rlink], [Raisonance RLink JTAG Programmer], [RLINK]],
 	[[usbprog], [USBProg JTAG Programmer], [USBPROG]],
 	[[esp_usb_jtag], [Espressif JTAG Programmer], [ESP_USB_JTAG]],
+  [[ch347], [Mode 3 of the CH347 devices], [CH347]],
 	[[cmsis_dap_v2], [CMSIS-DAP v2 compliant dongle (USB bulk)], [CMSIS_DAP_USB]]])
 
 # Please keep cmsis_dap_v2 the last in USB1_ADAPTERS

@@ -1561,6 +1561,8 @@ static const struct dap_part_nums {
 	{ 0x1eb,  0x211, "Tegra 210 ROM",              "(ROM Table)", },
 	{ 0x1eb,  0x302, "Denver Debug",               "(Debug Unit)", },
 	{ 0x1eb,  0x402, "Denver PMU",                 "(Performance Monitor Unit)", },
+	{ 0x020,  0x484, "STM32H56/H57xx",             "(STM32H5 Microcontroller)", },
+	{ 0x020,  0x474, "STM32H50xx",                 "(STM32H5 Microcontroller)", },
 	{ 0x575,  0x132, "STAR SCS",                   "(System Control Space)", },
 	{ 0x575,  0x4d2, "Cortex-M52 ROM",             "(ROM Table)", },
 	{ 0x575,  0xd24, "Cortex-M52 Debug",           "(Debug Unit)", },

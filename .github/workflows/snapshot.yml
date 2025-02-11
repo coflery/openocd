@@ -17,6 +17,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686
+          sudo apt install snapd
+          sudo snap install --channel=3 jimmctl
       - name: Checkout Code
         uses: actions/checkout@v1
       - run: ./bootstrap
@@ -102,7 +104,7 @@ jobs:
           echo "IS_PRE_RELEASE=$IS_PRE_RELEASE" >> $GITHUB_ENV
           echo "ARTIFACT_PATH=$PWD/$ARTIFACT" >> $GITHUB_ENV
       - name: Publish OpenOCD packaged for windows
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: ${{ env.ARTIFACT_PATH }}
       - name: Delete 'latest' Release

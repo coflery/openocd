@@ -17,6 +17,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686
+          sudo apt install snapd
+          sudo snap install --channel=3 jimmctl
       - name: Checkout Code
         uses: actions/checkout@v4
       - run: ./bootstrap

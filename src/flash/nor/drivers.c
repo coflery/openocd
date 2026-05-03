@@ -11,6 +11,8 @@
 #include <helper/types.h>
 #include "imp.h"
 
+extern struct flash_driver plugin_flash;
+
 /**
  * The list of built-in flash drivers.
  * @todo Make this dynamically extendable with loadable modules.
@@ -98,6 +100,8 @@ static const struct flash_driver * const flash_drivers[] = {
 	&xcf_flash,
 	&xmc1xxx_flash,
 	&xmc4xxx_flash,
+	&plugin_flash,
+	NULL,
 };
 
 const struct flash_driver *flash_driver_find_by_name(const char *name)
